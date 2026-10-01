@@ -108,3 +108,48 @@ class DatasetSummary(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     model_loaded: bool
+
+
+class GenderSplit(BaseModel):
+    male: int
+    female: int
+    male_pct: float
+    female_pct: float
+
+
+class DependentBar(BaseModel):
+    dependents: str
+    avg_loan_amount: float
+
+
+class PropertyIncomeBar(BaseModel):
+    property_area: str
+    total_applicant_income: float
+
+
+class TermApprovalPoint(BaseModel):
+    term_bucket: str
+    approval_pct: float
+
+
+class IncomeApprovalPoint(BaseModel):
+    income: float
+    approval_pct: float
+
+
+class DashboardData(BaseModel):
+    """Everything the dashboard needs, in one call, matching the report layout."""
+
+    total_records: int
+    self_employed_count: int
+    graduate_count: int
+    approval_rate: float
+    credit_history_approval_rate: float
+    avg_applicant_income: float
+    avg_coapplicant_income: float
+    avg_loan_amount: float
+    gender_split: GenderSplit
+    avg_loan_by_dependents: List[DependentBar]
+    income_by_property_area: List[PropertyIncomeBar]
+    approval_by_loan_term: List[TermApprovalPoint]
+    approval_by_income: List[IncomeApprovalPoint]

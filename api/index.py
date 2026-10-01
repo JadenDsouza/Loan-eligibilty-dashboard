@@ -19,6 +19,12 @@ from .schemas import (
     FeatureImportance,
     DatasetSummary,
     HealthResponse,
+    DashboardData,
+    GenderSplit,
+    DependentBar,
+    PropertyIncomeBar,
+    TermApprovalPoint,
+    IncomeApprovalPoint,
 )
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -154,4 +160,72 @@ def dataset_summary():
         .apply(lambda s: round((s == "Y").mean() * 100, 1)).to_dict(),
         by_credit_history=df.groupby("Credit_History")["Loan_Status"]
         .apply(lambda s: round((s == "Y").mean() * 100, 1)).to_dict(),
+    )
+
+
+@app.get("/api/dashboard-data", response_model=DashboardData)
+def dashboard_data():
+    """Single aggregate payload powering every chart on the dashboard,
+    mirroring the reference BI-report layout (KPIs, gender split,
+    dependents vs loan amount, income by area, approvals by term)."""
+    df = get_dataset()
+    total = len(df)
+
+    male_ct = int((df["Gender"] == "Male").sum())
+    female_ct = int((df["Gender"] == "Female").sum())
+
+    gender_split = GenderSplit(
+        male=male_ct,
+        female=female_ct,
+        male_pct=round(male_ct / total * 100, 2),
+        female_pct=round(female_ct / total * 100, 2),
+    )
+
+    dep_avg = df.groupby("Dependents")["Loan_Amount"].mean().sort_index()
+    avg_loan_by_dependents = [
+        DependentBar(dependents=str(k), avg_loan_amount=round(v, 1))
+        for k, v in dep_avg.items()
+    ]
+
+    area_income = df.groupby("Property_Area")["Applicant_Income"].sum().sort_values(ascending=False)
+    income_by_property_area = [
+        PropertyIncomeBar(property_area=k, total_applicant_income=float(v))
+        for k, v in area_income.items()
+    ]
+
+    bins = [0, 100, 200, 300, 400, 500]
+    labels = ["0-100", "100-200", "200-300", "300-400", "400-500"]
+    df["_term_bucket"] = pd.cut(df["Loan_Amount_Term"], bins=bins, labels=labels)
+    term_approval = (
+        df.groupby("_term_bucket", observed=True)["Loan_Status"]
+        .apply(lambda s: round((s == "Y").mean() * 100, 1) if len(s) else 0.0)
+    )
+    approval_by_loan_term = [
+        TermApprovalPoint(term_bucket=str(k), approval_pct=float(v))
+        for k, v in term_approval.items()
+    ]
+
+    income_bins = sorted(df["Applicant_Income"].unique())
+    sample = df.sort_values("Applicant_Income")
+    approval_by_income = [
+        IncomeApprovalPoint(income=float(row.Applicant_Income), approval_pct=100.0 if row.Loan_Status == "Y" else 0.0)
+        for row in sample.itertuples()
+    ][:120]  # cap payload size; frontend renders a scatter/line trend
+
+    return DashboardData(
+        total_records=total,
+        self_employed_count=int((df["Self_Employed"] == "Yes").sum()),
+        graduate_count=int((df["Education"] == "Graduate").sum()),
+        approval_rate=round((df["Loan_Status"] == "Y").mean() * 100, 2),
+        credit_history_approval_rate=round(
+            df[df["Credit_History"] == 1]["Loan_Status"].eq("Y").mean() * 100, 2
+        ),
+        avg_applicant_income=round(df["Applicant_Income"].mean(), 1),
+        avg_coapplicant_income=round(df["Coapplicant_Income"].mean(), 1),
+        avg_loan_amount=round(df["Loan_Amount"].mean(), 2),
+        gender_split=gender_split,
+        avg_loan_by_dependents=avg_loan_by_dependents,
+        income_by_property_area=income_by_property_area,
+        approval_by_loan_term=approval_by_loan_term,
+        approval_by_income=approval_by_income,
     )
